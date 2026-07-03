@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowBackground">#1e1e2e</item>
+        <item name="android:statusBarColor">#11111b</item>
+        <item name="android:navigationBarColor">#11111b</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="colorAccent">#89b4fa</item>
+        <item name="colorPrimary">#89b4fa</item>
+        <item name="colorPrimaryDark">#11111b</item>
+        <item name="colorSecondary">#b4befe</item>
+        <item name="colorSurface">#313244</item>
+        <item name="colorOnSurface">#cdd6f4</item>
+        <item name="bottomSheetDialogTheme">@style/AppBottomSheetDialogTheme</item>
+    </style>
+
+    <style name="AppBottomSheetDialogTheme" parent="ThemeOverlay.MaterialComponents.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/AppBottomSheet</item>
+        <item name="android:backgroundDimAmount">0.78</item>
+    </style>
+
+    <style name="AppBottomSheet" parent="Widget.MaterialComponents.BottomSheet.Modal">
+        <item name="backgroundTint">#313244</item>
+        <item name="shapeAppearanceOverlay">@style/AppBottomSheetShape</item>
+    </style>
+
+    <style name="AppBottomSheetShape">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">16dp</item>
+        <item name="cornerSizeTopRight">16dp</item>
+        <item name="cornerSizeBottomLeft">0dp</item>
+        <item name="cornerSizeBottomRight">0dp</item>
+    </style>
+</resources>

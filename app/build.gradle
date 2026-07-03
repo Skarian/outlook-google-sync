@@ -1,0 +1,51 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "com.skarian.outlookgooglesync"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.skarian.outlookgooglesync"
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName "0.0.1"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    signingConfigs {
+        def releaseStorePath = System.getenv("OGS_RELEASE_STORE_FILE")
+        if (releaseStorePath != null && !releaseStorePath.isEmpty()) {
+            release {
+                storeFile file(releaseStorePath)
+                storePassword System.getenv("OGS_RELEASE_STORE_PASSWORD")
+                keyAlias System.getenv("OGS_RELEASE_KEY_ALIAS")
+                keyPassword System.getenv("OGS_RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
+
+        release {
+            minifyEnabled false
+            if (signingConfigs.findByName("release") != null) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation "com.google.android.material:material:1.14.0"
+}

@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode release signing key
+        env:
+          OGS_RELEASE_STORE_BASE64: ${{ secrets.OGS_RELEASE_STORE_BASE64 }}
+          OGS_RELEASE_STORE_PASSWORD: ${{ secrets.OGS_RELEASE_STORE_PASSWORD }}
+          OGS_RELEASE_KEY_ALIAS: ${{ secrets.OGS_RELEASE_KEY_ALIAS }}
+          OGS_RELEASE_KEY_PASSWORD: ${{ secrets.OGS_RELEASE_KEY_PASSWORD }}
+        run: |
+          for name in OGS_RELEASE_STORE_BASE64 OGS_RELEASE_STORE_PASSWORD OGS_RELEASE_KEY_ALIAS OGS_RELEASE_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "Missing required secret: $name" >&2
+              exit 1
+            fi
+          done
+          mkdir -p "$RUNNER_TEMP/signing"
+          printf '%s' "$OGS_RELEASE_STORE_BASE64" | base64 -d > "$RUNNER_TEMP/signing/release.jks"
+
+      - name: Build signed release APK
+        env:
+          OGS_RELEASE_STORE_FILE: ${{ runner.temp }}/signing/release.jks
+          OGS_RELEASE_STORE_PASSWORD: ${{ secrets.OGS_RELEASE_STORE_PASSWORD }}
+          OGS_RELEASE_KEY_ALIAS: ${{ secrets.OGS_RELEASE_KEY_ALIAS }}
+          OGS_RELEASE_KEY_PASSWORD: ${{ secrets.OGS_RELEASE_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon assembleRelease lintDebug
+
+      - name: Prepare release files
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          apk="$(find app/build/outputs/apk/release -type f -name '*.apk' ! -name '*unsigned*' | head -n 1)"
+          test -n "$apk"
+          cp "$apk" "outlook-google-sync-${tag}.apk"
+          sha256sum "outlook-google-sync-${tag}.apk" > "outlook-google-sync-${tag}.apk.sha256"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          gh release create "$tag" \
+            "outlook-google-sync-${tag}.apk" \
+            "outlook-google-sync-${tag}.apk.sha256" \
+            --title "$tag" \
+            --generate-notes
