@@ -13,8 +13,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 final class HistoryStore {
     static final String STATUS_SUCCESS = "Success";
@@ -25,7 +29,9 @@ final class HistoryStore {
     static final String STATUS_PENDING = "Pending";
 
     private static final String FILE_NAME = "sync-history.jsonl";
-    private static final int MAX_ENTRIES = 120;
+    private static final int MAX_ENTRIES = 12000;
+    private static final long RETENTION_DAYS = 30L;
+    private static final long RETENTION_MS = RETENTION_DAYS * 24L * 60L * 60L * 1000L;
 
     private HistoryStore() {}
 
@@ -93,6 +99,7 @@ final class HistoryStore {
     }
 
     static synchronized List<HistoryEntry> entries(Context context) {
+        prune(context);
         List<HistoryEntry> entries = read(context);
         Collections.sort(entries, (left, right) -> Long.compare(right.timestamp(), left.timestamp()));
         return entries;
@@ -121,6 +128,46 @@ final class HistoryStore {
         if (file.exists()) {
             file.delete();
         }
+    }
+
+    static synchronized String exportText(Context context) {
+        List<HistoryEntry> entries = entries(context);
+        if (entries.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder out = new StringBuilder();
+        out.append("Outlook Google Sync Log\n");
+        out.append("Exported: ").append(AppLog.blockTimestamp(System.currentTimeMillis())).append('\n');
+        out.append("Entries: last ").append(RETENTION_DAYS).append(" days\n\n");
+
+        Map<Long, List<HistoryEntry>> uploadsBySync = uploadChildren(entries);
+        Set<HistoryEntry> groupedUploads = new HashSet<>();
+        boolean first = true;
+        for (HistoryEntry entry : entries) {
+            if (!entry.isSync()) {
+                continue;
+            }
+            List<HistoryEntry> children = uploadsBySync.get(entry.finishedAt());
+            if (children != null) {
+                groupedUploads.addAll(children);
+            }
+            if (!first) {
+                out.append('\n');
+            }
+            appendSyncExport(out, entry, children);
+            first = false;
+        }
+        for (HistoryEntry entry : entries) {
+            if (entry.isUpload() && !groupedUploads.contains(entry)) {
+                if (!first) {
+                    out.append('\n');
+                }
+                appendUploadExport(out, entry);
+                first = false;
+            }
+        }
+        return out.toString();
     }
 
     static String syncSummary(HistoryEntry entry) {
@@ -306,19 +353,158 @@ final class HistoryStore {
     private static void append(Context context, JSONObject json) throws Exception {
         List<JSONObject> all = readJson(context);
         all.add(json);
-        Collections.sort(all, new Comparator<JSONObject>() {
+        writeJson(context, retainedEntries(all, System.currentTimeMillis()));
+    }
+
+    private static Map<Long, List<HistoryEntry>> uploadChildren(List<HistoryEntry> entries) {
+        Map<Long, List<HistoryEntry>> uploadsBySync = new HashMap<>();
+        for (HistoryEntry entry : entries) {
+            if (!entry.isUpload()) {
+                continue;
+            }
+            long parent = entry.parentSyncFinishedAt();
+            if (parent <= 0L) {
+                continue;
+            }
+            List<HistoryEntry> children = uploadsBySync.get(parent);
+            if (children == null) {
+                children = new ArrayList<>();
+                uploadsBySync.put(parent, children);
+            }
+            children.add(entry);
+        }
+        return uploadsBySync;
+    }
+
+    private static void appendSyncExport(StringBuilder out, HistoryEntry entry, List<HistoryEntry> uploadChildren) {
+        out.append('[').append(AppLog.blockTimestamp(entry.timestamp())).append("] ")
+                .append(entry.label().isEmpty() ? "Sync" : safeLine(entry.label())).append('\n');
+        if (STATUS_FAILED.equals(entry.status())) {
+            out.append("Result: Failed\n");
+            out.append("Duration: ").append(formatDuration(entry.json.optLong("durationMs", 0L))).append('\n');
+            String reason = failureReason(entry);
+            if (!reason.isEmpty()) {
+                out.append("Reason: ").append(reason).append('\n');
+            }
+            out.append("Google Calendar upload: Not started\n");
+            return;
+        }
+
+        boolean applied = entry.json.optBoolean("applied", false);
+        out.append("Result: ").append(applied ? entry.status() : "Preview").append('\n');
+        out.append("Duration: ").append(formatDuration(entry.json.optLong("durationMs", 0L))).append('\n');
+        out.append("Outlook events read: ").append(entry.json.optInt("sourceOccurrences", 0)).append('\n');
+        out.append("Mirrored calendar events before sync: ")
+                .append(entry.json.optInt("existingMirroredOccurrences", 0)).append('\n');
+        out.append("Added: ").append(entry.json.optInt("created", 0)).append('\n');
+        out.append("Updated: ").append(entry.json.optInt("updated", 0)).append('\n');
+        out.append("Removed canceled upcoming meetings: ").append(entry.json.optInt("deletedFuture", 0)).append('\n');
+        out.append("Kept completed meetings for history: ").append(entry.json.optInt("keptPastStale", 0)).append('\n');
+        String blocked = safeLine(entry.json.optString("deleteBlockedReason", ""));
+        if (!blocked.isEmpty()) {
+            out.append("Skipped removals: ").append(blocked).append('\n');
+        }
+        if (applied) {
+            HistoryEntry upload = latestUpload(uploadChildren);
+            JSONObject state = upload == null ? entry.json : upload.json;
+            out.append("Google Calendar upload: ").append(uploadStatus(entry, upload)).append('\n');
+            appendUploadState(out, state);
+        }
+    }
+
+    private static void appendUploadExport(StringBuilder out, HistoryEntry entry) {
+        out.append('[').append(AppLog.blockTimestamp(entry.timestamp())).append("] Google Calendar upload\n");
+        String label = safeLine(entry.json.optString("syncLabel", ""));
+        if (!label.isEmpty()) {
+            out.append("For: ").append(label).append('\n');
+        }
+        out.append("Result: ").append(uploadSummary(entry)).append('\n');
+        out.append("Duration: ").append(formatDuration(entry.json.optLong("durationMs", 0L))).append('\n');
+        appendUploadState(out, entry.json);
+    }
+
+    private static void appendUploadState(StringBuilder out, JSONObject json) {
+        out.append("Uploaded: ").append(json.optInt("uploadCleanActive", 0)).append('\n');
+        out.append("Waiting: ").append(json.optInt("uploadDirtyActive", 0)).append('\n');
+        out.append("Removals waiting: ").append(json.optInt("uploadDirtyDeleted", 0)).append('\n');
+    }
+
+    private static HistoryEntry latestUpload(List<HistoryEntry> uploadChildren) {
+        return uploadChildren == null || uploadChildren.isEmpty() ? null : uploadChildren.get(0);
+    }
+
+    private static String uploadStatus(HistoryEntry sync, HistoryEntry upload) {
+        if (upload != null) {
+            return uploadSummary(upload);
+        }
+        String status = sync.json.optString("uploadStatus", "");
+        return status.isEmpty() ? "Not started" : status;
+    }
+
+    private static String failureReason(HistoryEntry entry) {
+        String message = safeLine(entry.json.optString("errorMessage", ""));
+        if (!message.isEmpty()) {
+            return message;
+        }
+        return safeLine(entry.json.optString("errorType", ""));
+    }
+
+    private static String safeLine(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace('\n', ' ').replace('\r', ' ').trim();
+    }
+
+    private static void prune(Context context) {
+        try {
+            List<JSONObject> all = readJson(context);
+            List<JSONObject> retained = retainedEntries(all, System.currentTimeMillis());
+            if (!sameJson(all, retained)) {
+                writeJson(context, retained);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static List<JSONObject> retainedEntries(List<JSONObject> entries, long now) {
+        List<JSONObject> sorted = new ArrayList<>(entries);
+        Collections.sort(sorted, new Comparator<JSONObject>() {
             @Override
             public int compare(JSONObject left, JSONObject right) {
                 return Long.compare(right.optLong("timestamp", 0L), left.optLong("timestamp", 0L));
             }
         });
-        while (all.size() > MAX_ENTRIES) {
-            all.remove(all.size() - 1);
-        }
-        Collections.reverse(all);
 
+        long cutoff = now - RETENTION_MS;
+        List<JSONObject> retained = new ArrayList<>();
+        for (JSONObject entry : sorted) {
+            if (entry.optLong("timestamp", 0L) >= cutoff) {
+                retained.add(entry);
+            }
+        }
+        while (retained.size() > MAX_ENTRIES) {
+            retained.remove(retained.size() - 1);
+        }
+        Collections.reverse(retained);
+        return retained;
+    }
+
+    private static boolean sameJson(List<JSONObject> left, List<JSONObject> right) {
+        if (left.size() != right.size()) {
+            return false;
+        }
+        for (int i = 0; i < left.size(); i++) {
+            if (!left.get(i).toString().equals(right.get(i).toString())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static void writeJson(Context context, List<JSONObject> entries) throws Exception {
         try (FileOutputStream out = new FileOutputStream(file(context), false)) {
-            for (JSONObject entry : all) {
+            for (JSONObject entry : entries) {
                 out.write(entry.toString().getBytes(StandardCharsets.UTF_8));
                 out.write('\n');
             }

@@ -84,10 +84,10 @@ usage in Android settings.
 
 ## Privacy
 
-The app stores its settings, sync history, and debug log in app-private Android
-storage. It does not send data to its own server because there is no server.
-Copied events do sync to Google through the normal Google Calendar sync adapter
-once they are written into the selected Google Calendar.
+The app stores its settings, recent sync history, and debug log in app-private
+Android storage. It does not send data to its own server because there is no
+server. Copied events do sync to Google through the normal Google Calendar sync
+adapter once they are written into the selected Google Calendar.
 
 Read [PRIVACY.md](PRIVACY.md) before sharing logs or publishing screenshots.
 

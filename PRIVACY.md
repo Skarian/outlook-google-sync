@@ -43,13 +43,17 @@ The app stores this data in app-private Android storage:
 - selected Outlook calendar IDs;
 - selected Google Calendar ID;
 - whether hourly sync is enabled;
-- sync history entries with timestamps, counts, duration, upload state, and
-  error messages;
-- a bounded debug log, capped at 256 KB.
+- sync history entries from the last 30 days, with timestamps, counts,
+  duration, upload state, and error messages;
+- a bounded private debug log, capped at 256 KB.
 
 Normal sync history does not list event titles or participant names. Preview
 screens can show sample event titles because they are shown to you before a
 manual sync.
+
+`Export Sync Log` saves the structured sync history, not the private raw debug
+log, raw JSON, or stack traces. Review exported logs before sharing them because
+failure messages can still include local Android details.
 
 Stack traces and Android error messages can include account names, calendar IDs,
 or other local identifiers. Read logs before sharing them.

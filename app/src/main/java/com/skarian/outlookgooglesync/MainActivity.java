@@ -3,10 +3,13 @@ package com.skarian.outlookgooglesync;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -21,7 +24,11 @@ import android.widget.TextView;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -31,6 +38,7 @@ import java.util.Set;
 
 public final class MainActivity extends Activity {
     private static final int REQUEST_CALENDAR_PERMISSION = 10;
+    private static final int REQUEST_EXPORT_SYNC_LOG = 11;
 
     private static final int BASE = Color.rgb(30, 30, 46);
     private static final int TRANSPARENT = Color.TRANSPARENT;
@@ -60,6 +68,15 @@ public final class MainActivity extends Activity {
         getWindow().setStatusBarColor(BASE);
         getWindow().setNavigationBarColor(BASE);
         buildUi();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_EXPORT_SYNC_LOG && resultCode == RESULT_OK
+                && data != null && data.getData() != null) {
+            writeSyncLogExport(data.getData());
+        }
     }
 
     private void buildUi() {
@@ -483,13 +500,60 @@ public final class MainActivity extends Activity {
         LinearLayout footer = new LinearLayout(this);
         footer.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
         footer.setPadding(0, dp(10), 0, 0);
+        Button export = button("Export Sync Log", v -> exportSyncLog(), ButtonStyle.LINK);
+        footer.addView(export, wrapContent());
         Button clear = button("Clear Sync Log", v -> confirmClearLog(dialog), ButtonStyle.LINK);
         clear.setTextColor(RED);
-        footer.addView(clear, wrapContent());
+        LinearLayout.LayoutParams clearParams = wrapContent();
+        clearParams.leftMargin = dp(12);
+        footer.addView(clear, clearParams);
         root.addView(footer, matchWrap());
 
         dialog.setContentView(root);
         dialog.show();
+    }
+
+    private void exportSyncLog() {
+        if (HistoryStore.entries(this).isEmpty()) {
+            showMessage("Export Sync Log", "No sync log entries are available to export.");
+            return;
+        }
+
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TITLE, exportFileName());
+        try {
+            startActivityForResult(intent, REQUEST_EXPORT_SYNC_LOG);
+        } catch (ActivityNotFoundException e) {
+            showMessage("Export Sync Log", "No document app is available to save the sync log.");
+        }
+    }
+
+    private void writeSyncLogExport(Uri uri) {
+        String text = HistoryStore.exportText(this);
+        if (text.isEmpty()) {
+            showMessage("Export Sync Log", "No sync log entries are available to export.");
+            return;
+        }
+
+        try (OutputStream out = getContentResolver().openOutputStream(uri)) {
+            if (out == null) {
+                throw new IllegalStateException("Android did not open the selected file.");
+            }
+            out.write(text.getBytes(StandardCharsets.UTF_8));
+            showMessage("Export Sync Log", "Sync log exported.");
+        } catch (Exception e) {
+            String detail = e.getMessage();
+            showMessage("Export Sync Log", "Could not export sync log."
+                    + (detail == null || detail.isEmpty() ? "" : "\n\n" + detail));
+        }
+    }
+
+    private String exportFileName() {
+        return "outlook-google-sync-log-"
+                + new SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(new Date())
+                + ".txt";
     }
 
     private View logEntry(HistoryEntry entry, List<HistoryEntry> uploadChildren, boolean expanded) {

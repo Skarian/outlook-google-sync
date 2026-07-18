@@ -65,6 +65,7 @@ Main actions:
 - `Turn On`
 - `Turn Off`
 - `View Sync Log`
+- `Export Sync Log`
 - `Clear Sync Log`
 
 Sync and log labels:

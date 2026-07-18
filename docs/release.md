@@ -51,9 +51,9 @@ base64 -i /absolute/path/to/release.jks
 Create a release by pushing a tag:
 
 ```sh
-git tag v0.0.1
+git tag v0.0.2
 git push origin main
-git push origin v0.0.1
+git push origin v0.0.2
 ```
 
 The workflow builds a signed release APK, writes a SHA-256 file, and attaches
@@ -103,6 +103,8 @@ sha256sum app/build/outputs/apk/release/*.apk
 - Confirm a completed meeting remains if it later disappears from Outlook.
 - Confirm a future canceled meeting is removed.
 - Turn on hourly sync and confirm a scheduled run appears in the sync log.
+- Export the sync log and confirm the saved text contains structured entries
+  only, not raw debug log content, stack traces, or internal calendar IDs.
 
 ## Publish manually
 

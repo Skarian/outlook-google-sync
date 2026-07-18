@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.2
+
+- Added `Export Sync Log` for saving recent structured sync history to a text
+  file.
+- Limited structured sync history to the last 30 days with a larger bounded
+  entry cap for hourly sync and upload checks.
+- Kept the private raw debug log out of sync log exports.
+
 ## 0.0.1
 
 - First public release candidate.

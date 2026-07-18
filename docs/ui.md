@@ -261,6 +261,17 @@ Sheet rules:
 
 `View Sync Log` opens a full-height bottom sheet with newest entries first.
 
+The footer has quiet text-style actions:
+
+- `Export Sync Log`;
+- `Clear Sync Log`.
+
+`Export Sync Log` opens Android's document save flow and writes a text file with
+the retained structured sync history from the last 30 days. It must not export
+the private raw debug log, raw JSONL, hidden raw details, stack traces, event
+titles, descriptions, participant names, participant emails, or internal
+calendar IDs.
+
 Each entry is collapsible:
 
 - collapsed row: result summary and timestamp;

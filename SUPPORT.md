@@ -18,9 +18,11 @@ detail for someone else to follow the same path.
 
 ## Logs
 
-The app's sync log is useful, but review it before posting. Logs can contain
-calendar IDs, timestamps, counts, Android error messages, and sometimes account
-names from Android calendar labels.
+The app's sync log is useful, but review it before posting. `Export Sync Log`
+saves recent structured sync history and excludes the private raw debug log,
+raw JSON, and stack traces. Exported logs can still contain timestamps, counts,
+Android error messages, and sometimes account names from Android calendar
+labels.
 
 Do not post screenshots or logs that show private meeting titles, descriptions,
 participant names, participant emails, company names, or account names you do
